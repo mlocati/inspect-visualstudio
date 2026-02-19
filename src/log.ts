@@ -8,9 +8,7 @@ export function setDebug(value: boolean): void {
 
 export function debug(message: string): void {
   if (enableDebug) {
-    String(message)
-      .split(/\r?\n/)
-      .forEach((line) => core.info(`[DEBUG] ${line}`));
+    core.info(message)
   } else if (core.isDebug()) {
     core.debug(message);
   }
@@ -38,4 +36,18 @@ export function startGroup(name: string): void {
 
 export function endGroup(): void {
   core.endGroup();
+}
+
+export function startDebugGroup(name: string): void {
+  if (enableDebug) {
+    core.startGroup(name);
+  } else if (core.isDebug()) {
+    core.debug(`--- ${name} ---`);
+  }
+}
+
+export function endDebugGroup(): void {
+  if (enableDebug) {
+    core.endGroup();
+  }
 }

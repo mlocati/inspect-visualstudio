@@ -23,6 +23,7 @@ This makes it easy to:
 		architecture: 'amd64'
 		windows-sdk-version: '10.0.26100.0'
 		spectre-mode: 'false'
+		process-paths: 'cygwin'
 
 - name: Print selected toolchain
 	shell: pwsh
@@ -102,6 +103,19 @@ This makes it easy to:
 - **Examples:**
 	- `spectre-mode: 'false'`
 	- `spectre-mode: 'true'`
+
+### `process-paths`
+
+- **Required:** No
+- **Default:** Empty (no processing)
+- **Allowed values:** `windows`, `cygwin`, `msys2`
+
+By default the paths you'll find in the output are not processed.
+You can:
+- specify to normalize them, taking out non existing paths by using `process-paths: windows`
+- specify to normalize them, taking out non existing paths and converting paths to Cygwin paths (`/cygdrive/c/path`) by using `process-paths: cygwin`
+- specify to normalize them, taking out non existing paths and converting paths to MSYS2 paths (`/c/path`) by using `process-paths: msys2`
+
 
 ### `if-not-windows`
 

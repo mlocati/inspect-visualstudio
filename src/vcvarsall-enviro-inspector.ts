@@ -6,6 +6,10 @@ import * as runner from "./runner";
 import { v4 as uuidV4 } from "uuid";
 import { type CaseInsensitiveStringMap } from "./CaseInsensitiveMap";
 import { ProcessStyle } from "./path-processor";
+import { parseEnv } from "node:util";
+
+type EnvVarList = string[] | string;
+
 interface Options {
   architecture?: Architecture | string;
   platformType?: "" | "store" | "uwp" | string;
@@ -16,6 +20,9 @@ interface Options {
   | string;
   spectreMode?: boolean;
   processPaths?: "" | "windows" | "cygwin" | "msys2" | string;
+  windowsPaths?: EnvVarList;
+  cygwinPaths?: EnvVarList;
+  msys2Paths?: EnvVarList;
 }
 
 enum Architecture {
@@ -162,11 +169,40 @@ function parseProcessPathsOption(option: string): ProcessStyle | null {
   }
 }
 
+function parseByVarProcessStyle(options?: Options): Map<ProcessStyle, string[]> {
+  const map = new Map<ProcessStyle, string[]>();
+  let vars: string[];
+  vars = parseEnvVarList(options?.windowsPaths || "");
+  if (vars.length > 0) {
+    map.set(ProcessStyle.Windows, vars);
+  }
+  vars = parseEnvVarList(options?.cygwinPaths || "");
+  if (vars.length > 0) {
+    map.set(ProcessStyle.Cygwin, vars);
+  }
+  vars = parseEnvVarList(options?.msys2Paths || "");
+  if (vars.length > 0) {
+    map.set(ProcessStyle.MSYS2, vars);
+  }
+  return map;
+}
+
+function parseEnvVarList(option: EnvVarList): string[] {
+  let vars: string[];
+  if (typeof option === "string") {
+    vars = option.split(/[\r\n]+/);
+  } else {
+    vars = option;
+  }
+  return vars.map((s) => s.trim()).filter((s) => s !== "");
+}
+
 export async function inspectVCVarsAllEnvironmentVariables(
   vcVarsAllPath: string,
   options?: Options,
 ): Promise<CaseInsensitiveStringMap> {
   const processStyle = parseProcessPathsOption(options?.processPaths || "");
+  const byVarProcessStyle = parseByVarProcessStyle(options);
   const sep = "[----------SEPARATOR-" + uuidV4() + "----------]";
   log.startDebugGroup("Running vcvarsall.bat");
   let result: runner.Result;
@@ -220,8 +256,8 @@ export async function inspectVCVarsAllEnvironmentVariables(
   log.endDebugGroup();
   const envAfter = parseSetOutput(rawEnvAfter);
   let delta: CaseInsensitiveStringMap = computeEnvDelta(envBefore, envAfter);
-  if (processStyle !== null) {
-    delta = processPaths(delta, processStyle);
+  if (processStyle !== null || byVarProcessStyle.size > 0) {
+    delta = processPaths(delta, processStyle, byVarProcessStyle);
   }
   return delta;
 }

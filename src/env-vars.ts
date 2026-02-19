@@ -123,25 +123,43 @@ export function computeEnvDelta(before: CaseInsensitiveStringMap, after: CaseIns
   }
 }
 
-export function processPaths(vars: CaseInsensitiveStringMap, processStyle: ProcessStyle): CaseInsensitiveStringMap {
-  log.startDebugGroup(`Processing environment variables (${processStyle})`);
+function getProcessStyleForVar(varName: string, defaultProcessStyle?: ProcessStyle | null, byVarProcessStyle?: Map<ProcessStyle, string[]> | null): [ProcessStyle | null, boolean] {
+  if (byVarProcessStyle) {
+    for (const [style, varNames] of byVarProcessStyle.entries()) {
+      if (varNames.some(vn => envNameNormalizer(vn) === envNameNormalizer(varName))) {
+        return [style, true];
+      }
+    }
+  }
+  return [defaultProcessStyle ?? null, false];
+}
+
+
+export function processPaths(vars: CaseInsensitiveStringMap, defaultProcessStyle?: ProcessStyle | null, byVarProcessStyle?: Map<ProcessStyle, string[]> | null): CaseInsensitiveStringMap {
+  log.startDebugGroup(`Processing environment variables`);
   try {
     const result = new CaseInsensitiveStringMap();
     for (const [key, value] of vars) {
+      const [processStyleForVar, styleForSpecificVar] = getProcessStyleForVar(key, defaultProcessStyle, byVarProcessStyle);
+      if (processStyleForVar === null) {
+        log.debug(`no process style for "${key}"`);
+        result.set(key, value);
+        continue;
+      }
       if (isSinglePathEnvVar(key)) {
-        const path = processExistingPath(value, processStyle);
-        log.debug(`single path "${key}": ${value} -> ${value === path ? '(unchanged)' : path}`);
+        const path = processExistingPath(value, processStyleForVar);
+        log.debug(`single path "${key}" as ${processStyleForVar}: ${value} -> ${value === path ? '(unchanged)' : path}`);
         if (path) {
           result.set(key, path);
         }
-        continue
+        continue;
       }
       if (isMultiPathEnvVar(key)) {
-        log.debug(`multi path "${key}"`);
+        log.debug(`multi path "${key}" as ${processStyleForVar}:`);
         const paths = value
           .split(';')
           .map(s => {
-            const processed = processExistingPath(s, processStyle);
+            const processed = processExistingPath(s, processStyleForVar);
             log.debug(`- ${s} -> ${s === processed ? '(unchanged)' : processed}`);
             return processed;
           })
@@ -151,7 +169,7 @@ export function processPaths(vars: CaseInsensitiveStringMap, processStyle: Proce
           log.debug('- no valid paths found, skipping environment variable');
           continue;
         }
-        switch (processStyle) {
+        switch (processStyleForVar) {
           case ProcessStyle.Windows:
             result.set(key, paths.join(';'));
             break;
@@ -160,11 +178,14 @@ export function processPaths(vars: CaseInsensitiveStringMap, processStyle: Proce
             result.set(key, paths.join(':'));
             break;
           default:
-            throw new Error(`Unsupported process style: ${processStyle}`);
+            throw new Error(`Unsupported process style: ${processStyleForVar}`);
         }
         continue;
       }
-      log.debug(`not path "${key}": ${value}`);
+      if (styleForSpecificVar) {
+        throw new Error(`Can't apply ${JSON.stringify(processStyleForVar)} process style to environment variable "${key}" because it is not recognized as single-path or multi-path variable`);
+      }
+      log.debug(`"${key}" doesn't contain paths, so we won't apply the default ${processStyleForVar} process style`);
       result.set(key, value);
     }
     return result;

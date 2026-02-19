@@ -21,9 +21,17 @@ This makes it easy to:
 	with:
 		version: '2022'
 		architecture: 'amd64'
+		platform-type: 'uwp'
 		windows-sdk-version: '10.0.26100.0'
 		spectre-mode: 'false'
-		process-paths: 'cygwin'
+		process-paths: 'windows'
+		windows-paths: |
+			PATH
+		cygwin-paths: |
+			INCLUDE
+		msys2-paths: |
+			LIB
+			LIBPATH
 
 - name: Print selected toolchain
 	shell: pwsh
@@ -111,11 +119,43 @@ This makes it easy to:
 - **Allowed values:** `windows`, `cygwin`, `msys2`
 
 By default the paths you'll find in the output are not processed.
+
 You can:
 - specify to normalize them, taking out non existing paths by using `process-paths: windows`
 - specify to normalize them, taking out non existing paths and converting paths to Cygwin paths (`/cygdrive/c/path`) by using `process-paths: cygwin`
 - specify to normalize them, taking out non existing paths and converting paths to MSYS2 paths (`/c/path`) by using `process-paths: msys2`
 
+The `windows-paths`, `cygwin-paths`, and `msys2-paths` options override this setting on a per-variable basis.
+
+### `windows-paths`
+
+- **Required:** No
+- **Default:** Empty (no processing)
+- **Allowed values:** newline-separated list of environment variable names
+
+You can use this input to specify a list or variable names whose values should be normalized (that is, non existing paths will be taken out).
+
+This option overrides `process-paths`.
+
+### `cygwin-paths`
+
+- **Required:** No
+- **Default:** Empty (no processing)
+- **Allowed values:** newline-separated list of environment variable names
+
+You can use this input to specify a list or variable names whose values should be normalized (that is, non existing paths will be taken out), and converted to Cygwin syntax (`/cygdrive/c/path/...`)
+
+This option overrides `process-paths`.
+
+### `msys2-paths`
+
+- **Required:** No
+- **Default:** Empty (no processing)
+- **Allowed values:** newline-separated list of environment variable names
+
+You can use this input to specify a list or variable names whose values should be normalized (that is, non existing paths will be taken out), and converted to MSYS2 syntax (`/c/path/...`)
+
+This option overrides `process-paths`.
 
 ### `if-not-windows`
 

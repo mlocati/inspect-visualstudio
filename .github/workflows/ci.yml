@@ -174,3 +174,57 @@ jobs:
         run: |
           Write-Host "Action outputs:"
           "$env:ALL_OUTPUT" | ConvertFrom-Json | ConvertFrom-Json | Format-List
+      -
+        name: Run action (mixed paths without defaults)
+        id: execute-mixed-1
+        uses: ./
+        with:
+          debug: true
+          windows-paths: |
+            PaTh  
+            ThisIsNotAnExistingVarName
+          cygwin-paths: |
+            INCLUDE
+          msys2-paths: |
+            LIB
+            LIBPATH
+      -
+        name: Dump outputs (except "all")
+        env:
+          OUTPUTS: ${{ toJson(steps.execute-mixed-1.outputs) }}
+        run: |
+          Write-Host "Action outputs:"
+          "$env:OUTPUTS" | ConvertFrom-Json | Where-Object { $_.Key -ne "all" } | Format-List
+      -
+        name: Dump outputs (values of "all")
+        env:
+          ALL_OUTPUT: ${{ toJson(steps.execute-mixed-1.outputs.all) }}
+        run: |
+          Write-Host "Action outputs:"
+          "$env:ALL_OUTPUT" | ConvertFrom-Json | ConvertFrom-Json | Format-List
+      -
+        name: Run action (mixed paths with defaults)
+        id: execute-mixed-2
+        uses: ./
+        with:
+          debug: true
+          process-paths: windows
+          cygwin-paths: |
+            Lib
+            LibPath
+          msys2-paths: |
+            includE
+      -
+        name: Dump outputs (except "all")
+        env:
+          OUTPUTS: ${{ toJson(steps.execute-mixed-2.outputs) }}
+        run: |
+          Write-Host "Action outputs:"
+          "$env:OUTPUTS" | ConvertFrom-Json | Where-Object { $_.Key -ne "all" } | Format-List
+      -
+        name: Dump outputs (values of "all")
+        env:
+          ALL_OUTPUT: ${{ toJson(steps.execute-mixed-2.outputs.all) }}
+        run: |
+          Write-Host "Action outputs:"
+          "$env:ALL_OUTPUT" | ConvertFrom-Json | ConvertFrom-Json | Format-List

@@ -24,6 +24,7 @@ function getVSWhereVersionArguments(
 
 async function findVisualStudioInstallationPathWithVSWhere(
   version: VisualStudioVersion | LatestVersion,
+  vsWherePath: string,
 ): Promise<string> {
   const args: string[] = [
     "-products",
@@ -34,7 +35,6 @@ async function findVisualStudioInstallationPathWithVSWhere(
     "-property",
     "installationPath",
   ];
-  const vsWherePath = await findVsWhere();
   const result = await runner.run(`"${vsWherePath}"`, args, {
     throwIfNonZeroExitCode: true,
   });
@@ -101,21 +101,33 @@ function findVisualStudioInstallationPathDefaults(
 export async function findVisualStudioInstallationPath(
   version: VisualStudioVersion | LatestVersion,
 ): Promise<string> {
+  let vsWherePath: string | undefined;
   try {
-    return await findVisualStudioInstallationPathWithVSWhere(version);
-  } catch (err) {
-    log.debug(
-      `Failed to find Visual Studio installation with vswhere.exe: ${err instanceof Error ? err.message : err}`,
-    );
+    vsWherePath = await findVsWhere();
+  } catch {
   }
+  log.startDebugGroup("Finding Visual Studio")
   try {
-    return findVisualStudioInstallationPathDefaults(version);
-  } catch (err) {
-    log.debug(
-      `Failed to find Visual Studio installation with default paths: ${err instanceof Error ? err.message : err}`,
+    if (vsWherePath) {
+      try {
+        return await findVisualStudioInstallationPathWithVSWhere(version, vsWherePath);
+      } catch (err) {
+        log.debug(
+          `Failed to find Visual Studio installation with vswhere.exe: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    try {
+      return findVisualStudioInstallationPathDefaults(version);
+    } catch (err) {
+      log.debug(
+        `Failed to find Visual Studio installation with default paths: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+    throw new Error(
+      `Unable to find Visual Studio installation for version ${version === "latest" ? version : version.year}`,
     );
+  } finally {
+    log.endDebugGroup();
   }
-  throw new Error(
-    `Unable to find Visual Studio installation for version ${version === "latest" ? version : version.year}`,
-  );
 }

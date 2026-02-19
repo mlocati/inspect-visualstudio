@@ -109,6 +109,9 @@ function issueCommand(command, properties, message) {
     const cmd = new Command(command, properties, message);
     process.stdout.write(cmd.toString() + os.EOL);
 }
+function issue(name, message = '') {
+    issueCommand(name, {}, message);
+}
 const CMD_STRING = '::';
 class Command {
     constructor(command, properties, message) {
@@ -28822,7 +28825,7 @@ function setOutput(name, value) {
  */
 function setFailed(message) {
     process.exitCode = ExitCode.Failure;
-    error$1(message);
+    error(message);
 }
 //-----------------------------------------------------------------------
 // Logging Commands
@@ -28845,7 +28848,7 @@ function debug$1(message) {
  * @param message error issue message. Errors will be converted to string via toString()
  * @param properties optional properties to add to the annotation.
  */
-function error$1(message, properties = {}) {
+function error(message, properties = {}) {
     issueCommand('error', toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 /**
@@ -28863,6 +28866,22 @@ function warning$1(message, properties = {}) {
 function info(message) {
     process.stdout.write(message + os.EOL);
 }
+/**
+ * Begin an output group.
+ *
+ * Output until the next `groupEnd` will be foldable in this group
+ *
+ * @param name The name of the output group
+ */
+function startGroup(name) {
+    issue('group', name);
+}
+/**
+ * End an output group.
+ */
+function endGroup() {
+    issue('endgroup');
+}
 
 let enableDebug = false;
 function setDebug(value) {
@@ -28870,9 +28889,7 @@ function setDebug(value) {
 }
 function debug(message) {
     if (enableDebug) {
-        String(message)
-            .split(/\r?\n/)
-            .forEach((line) => info(`[DEBUG] ${line}`));
+        info(message);
     }
     else if (isDebug()) {
         debug$1(message);
@@ -28881,8 +28898,18 @@ function debug(message) {
 function warning(message) {
     warning$1(message);
 }
-function error(message) {
-    error$1(message);
+function startDebugGroup(name) {
+    if (enableDebug) {
+        startGroup(name);
+    }
+    else if (isDebug()) {
+        debug$1(`--- ${name} ---`);
+    }
+}
+function endDebugGroup() {
+    if (enableDebug) {
+        endGroup();
+    }
 }
 
 var OnNonWindowsAction;
@@ -29009,34 +29036,36 @@ async function findProgram(program) {
     return found;
 }
 
-let vsWherePath;
 async function findVsWhere() {
-    if (vsWherePath !== undefined) {
-        if (vsWherePath instanceof Error) {
-            throw vsWherePath;
-        }
-        return vsWherePath;
-    }
+    let vsWherePath;
+    startDebugGroup("Finding vswhere.exe");
     try {
         vsWherePath = await findProgram("vswhere.exe");
-        return vsWherePath;
     }
     catch (err) {
         debug(`Failed to find vswhere.exe with where.exe (${err instanceof Error ? err.message : err}), let's try with some known paths`);
+    }
+    if (vsWherePath) {
+        debug(`Found vswhere.exe at ${vsWherePath}`);
+        endDebugGroup();
+        return vsWherePath;
     }
     const programsPath = path$1.join(process.env["ProgramFiles(x86)"] ||
         "C:\\Program Files (x86)");
     const p = path$1.join(programsPath, "Microsoft Visual Studio", "Installer", "vswhere.exe");
     try {
         vsWherePath = fs$1.realpathSync.native(p);
-        debug(`vswhere.exe at expected location ${vsWherePath}`);
-        return vsWherePath;
     }
     catch {
-        vsWherePath = new Error("vswhere.exe not found at expected locations: " + p);
-        error(vsWherePath);
-        throw vsWherePath;
+        debug(`vswhere.exe not found at expected location ${p}`);
     }
+    if (vsWherePath) {
+        debug(`Found vswhere.exe at ${vsWherePath}`);
+        endDebugGroup();
+        return vsWherePath;
+    }
+    endDebugGroup();
+    throw new Error("Unable to find vswhere.exe");
 }
 
 function compareVersionNumbers(a, b) {
@@ -29107,7 +29136,7 @@ function getVSWhereVersionArguments(version) {
     }
     return ["-version", `${version.minVersion},${version.maxVersion}`];
 }
-async function findVisualStudioInstallationPathWithVSWhere(version) {
+async function findVisualStudioInstallationPathWithVSWhere(version, vsWherePath) {
     const args = [
         "-products",
         "*",
@@ -29117,7 +29146,6 @@ async function findVisualStudioInstallationPathWithVSWhere(version) {
         "-property",
         "installationPath",
     ];
-    const vsWherePath = await findVsWhere();
     const result = await run$1(`"${vsWherePath}"`, args, {
         throwIfNonZeroExitCode: true,
     });
@@ -29167,19 +29195,33 @@ function findVisualStudioInstallationPathDefaults(version) {
     throw new Error(`Unable to find Visual Studio ${version.year} installation`);
 }
 async function findVisualStudioInstallationPath(version) {
+    let vsWherePath;
     try {
-        return await findVisualStudioInstallationPathWithVSWhere(version);
+        vsWherePath = await findVsWhere();
     }
-    catch (err) {
-        debug(`Failed to find Visual Studio installation with vswhere.exe: ${err instanceof Error ? err.message : err}`);
+    catch {
     }
+    startDebugGroup("Finding Visual Studio");
     try {
-        return findVisualStudioInstallationPathDefaults(version);
+        if (vsWherePath) {
+            try {
+                return await findVisualStudioInstallationPathWithVSWhere(version, vsWherePath);
+            }
+            catch (err) {
+                debug(`Failed to find Visual Studio installation with vswhere.exe: ${err instanceof Error ? err.message : err}`);
+            }
+        }
+        try {
+            return findVisualStudioInstallationPathDefaults(version);
+        }
+        catch (err) {
+            debug(`Failed to find Visual Studio installation with default paths: ${err instanceof Error ? err.message : err}`);
+        }
+        throw new Error(`Unable to find Visual Studio installation for version ${version === "latest" ? version : version.year}`);
     }
-    catch (err) {
-        debug(`Failed to find Visual Studio installation with default paths: ${err instanceof Error ? err.message : err}`);
+    finally {
+        endDebugGroup();
     }
-    throw new Error(`Unable to find Visual Studio installation for version ${version === "latest" ? version : version.year}`);
 }
 
 async function findVcvarsallByVisualStudioVersion(version) {
@@ -29187,13 +29229,19 @@ async function findVcvarsallByVisualStudioVersion(version) {
     return findVcvarsallByVisualStudioPath(vsPath);
 }
 function findVcvarsallByVisualStudioPath(visualStudioPath) {
-    const tryPath = path$1.join(visualStudioPath, "VC", "Auxiliary", "Build", "vcvarsall.bat");
-    if (fs$1.statSync(tryPath).isFile()) {
-        const realPath = fs$1.realpathSync.native(tryPath);
-        debug(`vcvarsall.bat found at: ${realPath}`);
-        return realPath;
+    startDebugGroup("Finding vcvarsall.bat");
+    try {
+        const tryPath = path$1.join(visualStudioPath, "VC", "Auxiliary", "Build", "vcvarsall.bat");
+        if (fs$1.statSync(tryPath).isFile()) {
+            const realPath = fs$1.realpathSync.native(tryPath);
+            debug(`vcvarsall.bat found at: ${realPath}`);
+            return realPath;
+        }
+        throw new Error(`vcvarsall.bat not found in Visual Studio installation at: ${visualStudioPath}`);
     }
-    throw new Error(`vcvarsall.bat not found in Visual Studio installation at: ${visualStudioPath}`);
+    finally {
+        endDebugGroup();
+    }
 }
 
 /**
@@ -29430,86 +29478,97 @@ function parseSetOutput(setOutput) {
     return result;
 }
 function computeEnvDelta(before, after) {
-    const delta = new CaseInsensitiveStringMap();
-    for (const [key, afterValue] of after) {
-        const beforeValue = before.get(key);
-        if (beforeValue === undefined) {
-            debug(`- new: ${key}=${afterValue}`);
-            delta.set(key, afterValue);
-            continue;
-        }
-        if (afterValue === beforeValue) {
-            debug(`- unchanged: ${key}=${afterValue}`);
-            continue;
-        }
-        if (!isMultiPathEnvVar(key)) {
-            debug(`- changed: ${key}=${afterValue} (was ${beforeValue})`);
-            delta.set(key, afterValue);
-            continue;
-        }
-        debug(`- computing delta for path-list: ${key}`);
-        const beforeValues = beforeValue.split(';').map(s => s.trim()).filter(s => s.length > 0);
-        const afterValues = afterValue.split(';').map(s => s.trim()).filter(s => s.length > 0);
-        const newAfterValues = afterValues.filter(av => {
-            if (beforeValues.some(bv => pathsAreSame(bv, av))) {
-                debug(`  - path same as before, skipping: ${av}`);
-                return false;
-            }
-            debug(`  - new path, including in delta: ${av}`);
-            return true;
-        });
-        if (newAfterValues.length === 0) {
-            debug('  - no new paths found, skipping environment variable');
-        }
-        else {
-            delta.set(key, newAfterValues.join(';'));
-        }
-    }
-    return delta;
-}
-function processPaths(vars, processStyle) {
-    debug(`Processing environment variables with process style ${processStyle}`);
-    const result = new CaseInsensitiveStringMap();
-    for (const [key, value] of vars) {
-        if (isSinglePathEnvVar(key)) {
-            const path = processExistingPath(value, processStyle);
-            debug(`- single path "${key}": ${value} -> ${value === path ? '(unchanged)' : path}`);
-            if (path) {
-                result.set(key, path);
-            }
-            continue;
-        }
-        if (isMultiPathEnvVar(key)) {
-            debug(`- multi path "${key}"`);
-            const paths = value
-                .split(';')
-                .map(s => {
-                const processed = processExistingPath(s, processStyle);
-                debug(`  - ${s} -> ${s === processed ? '(unchanged)' : processed}`);
-                return processed;
-            })
-                .filter(s => s !== '');
-            if (paths.length === 0) {
-                debug('  - no valid paths found, skipping environment variable');
+    startDebugGroup(`Computing environment variable delta`);
+    try {
+        const delta = new CaseInsensitiveStringMap();
+        for (const [key, afterValue] of after) {
+            const beforeValue = before.get(key);
+            if (beforeValue === undefined) {
+                debug(`new: ${key}=${afterValue}`);
+                delta.set(key, afterValue);
                 continue;
             }
-            switch (processStyle) {
-                case ProcessStyle.Windows:
-                    result.set(key, paths.join(';'));
-                    break;
-                case ProcessStyle.Cygwin:
-                case ProcessStyle.MSYS2:
-                    result.set(key, paths.join(':'));
-                    break;
-                default:
-                    throw new Error(`Unsupported process style: ${processStyle}`);
+            if (afterValue === beforeValue) {
+                debug(`unchanged: ${key}=${afterValue}`);
+                continue;
             }
-            continue;
+            if (!isMultiPathEnvVar(key)) {
+                debug(`changed: ${key}=${afterValue} (was ${beforeValue})`);
+                delta.set(key, afterValue);
+                continue;
+            }
+            debug(`computing delta for path-list: ${key}`);
+            const beforeValues = beforeValue.split(';').map(s => s.trim()).filter(s => s.length > 0);
+            const afterValues = afterValue.split(';').map(s => s.trim()).filter(s => s.length > 0);
+            const newAfterValues = afterValues.filter(av => {
+                if (beforeValues.some(bv => pathsAreSame(bv, av))) {
+                    debug(`- path same as before, skipping: ${av}`);
+                    return false;
+                }
+                debug(`- new path, including in delta: ${av}`);
+                return true;
+            });
+            if (newAfterValues.length === 0) {
+                debug('- no new paths found, skipping environment variable');
+            }
+            else {
+                delta.set(key, newAfterValues.join(';'));
+            }
         }
-        debug(`- not path "${key}": ${value}`);
-        result.set(key, value);
+        return delta;
     }
-    return result;
+    finally {
+        endDebugGroup();
+    }
+}
+function processPaths(vars, processStyle) {
+    startDebugGroup(`Processing environment variables (${processStyle})`);
+    try {
+        const result = new CaseInsensitiveStringMap();
+        for (const [key, value] of vars) {
+            if (isSinglePathEnvVar(key)) {
+                const path = processExistingPath(value, processStyle);
+                debug(`single path "${key}": ${value} -> ${value === path ? '(unchanged)' : path}`);
+                if (path) {
+                    result.set(key, path);
+                }
+                continue;
+            }
+            if (isMultiPathEnvVar(key)) {
+                debug(`multi path "${key}"`);
+                const paths = value
+                    .split(';')
+                    .map(s => {
+                    const processed = processExistingPath(s, processStyle);
+                    debug(`- ${s} -> ${s === processed ? '(unchanged)' : processed}`);
+                    return processed;
+                })
+                    .filter(s => s !== '');
+                if (paths.length === 0) {
+                    debug('- no valid paths found, skipping environment variable');
+                    continue;
+                }
+                switch (processStyle) {
+                    case ProcessStyle.Windows:
+                        result.set(key, paths.join(';'));
+                        break;
+                    case ProcessStyle.Cygwin:
+                    case ProcessStyle.MSYS2:
+                        result.set(key, paths.join(':'));
+                        break;
+                    default:
+                        throw new Error(`Unsupported process style: ${processStyle}`);
+                }
+                continue;
+            }
+            debug(`not path "${key}": ${value}`);
+            result.set(key, value);
+        }
+        return result;
+    }
+    finally {
+        endDebugGroup();
+    }
 }
 
 const byteToHex = [];
@@ -29708,23 +29767,30 @@ function parseProcessPathsOption(option) {
 }
 async function inspectVCVarsAllEnvironmentVariables(vcVarsAllPath, options) {
     const processStyle = parseProcessPathsOption(options?.processPaths || "");
-    const args = getArgumentsFromOptions(options);
-    debug(`vcvarsall.bat arguments: ${JSON.stringify(args)}`);
     const sep = "[----------SEPARATOR-" + v4() + "----------]";
-    const result = await run$1('cmd.exe', ['/c', `set && echo ${sep} && "${vcVarsAllPath}" ${args.join(" ")} && echo ${sep} && set`], {
-        env: {
-            ComSpec: process.env.ComSpec ||
-                path$1.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", "System32", "cmd.exe"),
-            Path: [
-                path$1.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", "System32"),
-                process.env.SystemRoot || process.env.windir || "C:\\Windows",
-            ].join(";"),
-            SystemRoot: process.env.SystemRoot || process.env.windir || "C:\\Windows",
-            windir: process.env.SystemRoot || process.env.windir || "C:\\Windows",
-        },
-    });
-    if (result.exitCode !== 0) {
-        throw new Error(`Failed to get environment variables: ${result.stderr || result.stdout || `Exited with code ${result.exitCode}`}`);
+    startDebugGroup("Running vcvarsall.bat");
+    let result;
+    try {
+        const args = getArgumentsFromOptions(options);
+        debug(`vcvarsall.bat arguments: ${JSON.stringify(args)}`);
+        result = await run$1('cmd.exe', ['/c', `set && echo ${sep} && "${vcVarsAllPath}" ${args.join(" ")} && echo ${sep} && set`], {
+            env: {
+                ComSpec: process.env.ComSpec ||
+                    path$1.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", "System32", "cmd.exe"),
+                Path: [
+                    path$1.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", "System32"),
+                    process.env.SystemRoot || process.env.windir || "C:\\Windows",
+                ].join(";"),
+                SystemRoot: process.env.SystemRoot || process.env.windir || "C:\\Windows",
+                windir: process.env.SystemRoot || process.env.windir || "C:\\Windows",
+            },
+        });
+        if (result.exitCode !== 0) {
+            throw new Error(`Failed to get environment variables: ${result.stderr || result.stdout || `Exited with code ${result.exitCode}`}`);
+        }
+    }
+    finally {
+        endDebugGroup();
     }
     const [rawEnvBefore, _, rawEnvAfter] = result.stdout
         .split(sep)
@@ -29732,11 +29798,14 @@ async function inspectVCVarsAllEnvironmentVariables(vcVarsAllPath, options) {
     if (!rawEnvBefore || !rawEnvAfter) {
         throw new Error(`Failed to parse environment variables: ${result.stdout}`);
     }
-    debug(`Parsing environment variables set before running vcvarsall.bat\n    ${rawEnvBefore.replace(/\n/g, "\n    ")}`);
+    startDebugGroup("Environment variables before vcvarsall.bat");
+    debug(rawEnvBefore);
+    endDebugGroup();
     const envBefore = parseSetOutput(rawEnvBefore);
-    debug(`Parsing environment variables set after running vcvarsall.bat\n    ${rawEnvAfter.replace(/\n/g, "\n    ")}`);
+    startDebugGroup("Environment variables after vcvarsall.bat");
+    debug(rawEnvAfter);
+    endDebugGroup();
     const envAfter = parseSetOutput(rawEnvAfter);
-    debug(`Computing environment variable delta`);
     let delta = computeEnvDelta(envBefore, envAfter);
     if (processStyle !== null) {
         delta = processPaths(delta, processStyle);

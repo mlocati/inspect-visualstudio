@@ -48,7 +48,7 @@ function isMultiPathEnvVar(name: string): boolean {
   return MULTI_PATH_ENV_VARS.includes(envNameNormalizer(name));
 }
 
-const pathsAreSame: (path1: string, path2: string) => boolean = (function() {
+const pathsAreSame: (path1: string, path2: string) => boolean = (function () {
   function getComparablePath(path: string): string {
     path = path.trim().toLocaleLowerCase();
     if (!/^[a-zA-Z]:[/\\]/.test(path)) {
@@ -58,7 +58,7 @@ const pathsAreSame: (path1: string, path2: string) => boolean = (function() {
       .replace(/\//g, '\\')
       .replace(/\\+/g, '\\')
       .replace(/\\$/, '')
-    ;
+      ;
     if (path[2] === undefined) {
       path += '\\';
     }
@@ -74,93 +74,101 @@ export function parseSetOutput(setOutput: string): CaseInsensitiveStringMap {
   setOutput.split('\n').forEach(line => {
     const match = line.replace(/\r+$/, '').match(/^([^=]+)=(.*)$/);
     if (match) {
-      result.set(match[1].trim(), match[2]);    
+      result.set(match[1].trim(), match[2]);
     }
   });
   return result;
 }
 
 export function computeEnvDelta(before: CaseInsensitiveStringMap, after: CaseInsensitiveStringMap): CaseInsensitiveStringMap {
-  const delta = new CaseInsensitiveStringMap();
-
-  for (const [key, afterValue] of after) {
-    const beforeValue = before.get(key);
-    if (beforeValue === undefined) {
-      log.debug(`- new: ${key}=${afterValue}`);
-      delta.set(key, afterValue);
-      continue;
-    }
-    if (afterValue === beforeValue) {
-      log.debug(`- unchanged: ${key}=${afterValue}`);
-      continue;
-    }
-    if (!isMultiPathEnvVar(key)) {
-      log.debug(`- changed: ${key}=${afterValue} (was ${beforeValue})`);
-      delta.set(key, afterValue);
-      continue;
-    }
-    log.debug(`- computing delta for path-list: ${key}`);
-    const beforeValues = beforeValue.split(';').map(s => s.trim()).filter(s => s.length > 0);
-    const afterValues = afterValue.split(';').map(s => s.trim()).filter(s => s.length > 0);
-    const newAfterValues = afterValues.filter(av => {
-      if (beforeValues.some(bv => pathsAreSame(bv, av))) {
-        log.debug(`  - path same as before, skipping: ${av}`);
-        return false;
+  log.startDebugGroup(`Computing environment variable delta`);
+  try {
+    const delta = new CaseInsensitiveStringMap();
+    for (const [key, afterValue] of after) {
+      const beforeValue = before.get(key);
+      if (beforeValue === undefined) {
+        log.debug(`new: ${key}=${afterValue}`);
+        delta.set(key, afterValue);
+        continue;
       }
-      log.debug(`  - new path, including in delta: ${av}`);
-      return true;
-    });
-    if (newAfterValues.length === 0) {
-      log.debug('  - no new paths found, skipping environment variable');
-    } else {
-      delta.set(key, newAfterValues.join(';'));
+      if (afterValue === beforeValue) {
+        log.debug(`unchanged: ${key}=${afterValue}`);
+        continue;
+      }
+      if (!isMultiPathEnvVar(key)) {
+        log.debug(`changed: ${key}=${afterValue} (was ${beforeValue})`);
+        delta.set(key, afterValue);
+        continue;
+      }
+      log.debug(`computing delta for path-list: ${key}`);
+      const beforeValues = beforeValue.split(';').map(s => s.trim()).filter(s => s.length > 0);
+      const afterValues = afterValue.split(';').map(s => s.trim()).filter(s => s.length > 0);
+      const newAfterValues = afterValues.filter(av => {
+        if (beforeValues.some(bv => pathsAreSame(bv, av))) {
+          log.debug(`- path same as before, skipping: ${av}`);
+          return false;
+        }
+        log.debug(`- new path, including in delta: ${av}`);
+        return true;
+      });
+      if (newAfterValues.length === 0) {
+        log.debug('- no new paths found, skipping environment variable');
+      } else {
+        delta.set(key, newAfterValues.join(';'));
+      }
     }
+    return delta;
+  } finally {
+    log.endDebugGroup();
   }
-  return delta;
 }
 
 export function processPaths(vars: CaseInsensitiveStringMap, processStyle: ProcessStyle): CaseInsensitiveStringMap {
-  log.debug(`Processing environment variables with process style ${processStyle}`);
-  const result = new CaseInsensitiveStringMap();
-  for (const [key, value] of vars) {
-    if (isSinglePathEnvVar(key)) {
-      const path = processExistingPath(value, processStyle);
-      log.debug(`- single path "${key}": ${value} -> ${value === path ? '(unchanged)' : path}`);
-      if (path) {
-        result.set(key, path);
+  log.startDebugGroup(`Processing environment variables (${processStyle})`);
+  try {
+    const result = new CaseInsensitiveStringMap();
+    for (const [key, value] of vars) {
+      if (isSinglePathEnvVar(key)) {
+        const path = processExistingPath(value, processStyle);
+        log.debug(`single path "${key}": ${value} -> ${value === path ? '(unchanged)' : path}`);
+        if (path) {
+          result.set(key, path);
+        }
+        continue
       }
-      continue
-    }
-    if (isMultiPathEnvVar(key)) {
-      log.debug(`- multi path "${key}"`);
-      const paths = value
-        .split(';')
-        .map(s => {
-          const processed = processExistingPath(s, processStyle);
-          log.debug(`  - ${s} -> ${s === processed ? '(unchanged)' : processed}`);
-          return processed;
-        })
-        .filter(s => s !== '')
-      ;
-      if (paths.length === 0) {
-        log.debug('  - no valid paths found, skipping environment variable');
+      if (isMultiPathEnvVar(key)) {
+        log.debug(`multi path "${key}"`);
+        const paths = value
+          .split(';')
+          .map(s => {
+            const processed = processExistingPath(s, processStyle);
+            log.debug(`- ${s} -> ${s === processed ? '(unchanged)' : processed}`);
+            return processed;
+          })
+          .filter(s => s !== '')
+          ;
+        if (paths.length === 0) {
+          log.debug('- no valid paths found, skipping environment variable');
+          continue;
+        }
+        switch (processStyle) {
+          case ProcessStyle.Windows:
+            result.set(key, paths.join(';'));
+            break;
+          case ProcessStyle.Cygwin:
+          case ProcessStyle.MSYS2:
+            result.set(key, paths.join(':'));
+            break;
+          default:
+            throw new Error(`Unsupported process style: ${processStyle}`);
+        }
         continue;
       }
-      switch (processStyle) {
-        case ProcessStyle.Windows:
-          result.set(key, paths.join(';'));
-          break;
-        case ProcessStyle.Cygwin:
-        case ProcessStyle.MSYS2:
-          result.set(key, paths.join(':'));
-          break;
-        default:
-          throw new Error(`Unsupported process style: ${processStyle}`);
-      }
-      continue;
+      log.debug(`not path "${key}": ${value}`);
+      result.set(key, value);
     }
-    log.debug(`- not path "${key}": ${value}`);
-    result.set(key, value);
+    return result;
+  } finally {
+    log.endDebugGroup();
   }
-  return result;
 }

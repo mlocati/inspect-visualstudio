@@ -1,10 +1,11 @@
-import { computeEnvDelta, parseSetOutput } from "./env-vars";
+import { computeEnvDelta, parseSetOutput, processPaths } from "./env-vars";
 import * as os from "node:os";
 import * as log from "./log";
 import * as path from "node:path";
 import * as runner from "./runner";
 import { v4 as uuidV4 } from "uuid";
 import { type CaseInsensitiveStringMap } from "./CaseInsensitiveMap";
+import { ProcessStyle } from "./path-processor";
 interface Options {
   architecture?: Architecture | string;
   platformType?: "" | "store" | "uwp" | string;
@@ -14,6 +15,7 @@ interface Options {
     | `${number}.${number}.${number}.${number}`
     | string;
   spectreMode?: boolean;
+  processPaths?: "" | "windows" | "cygwin" | "msys2" | string;
 }
 
 enum Architecture {
@@ -145,10 +147,26 @@ function getArgumentsFromOptions(options?: Options): string[] {
   return args;
 }
 
+function parseProcessPathsOption(option: string): ProcessStyle | null {
+  switch (option.trim().toLowerCase()) {
+    case "":
+      return null;
+    case "windows":
+      return ProcessStyle.Windows;
+    case "cygwin":
+      return ProcessStyle.Cygwin;
+    case "msys2":
+      return ProcessStyle.MSYS2;
+    default:
+      throw new Error(`Unsupported process paths option: ${option}`);
+  }
+}
+
 export async function inspectVCVarsAllEnvironmentVariables(
   vcVarsAllPath: string,
   options?: Options,
 ): Promise<CaseInsensitiveStringMap> {
+  const processStyle = parseProcessPathsOption(options?.processPaths || "");
   const args = getArgumentsFromOptions(options);
   log.debug(`vcvarsall.bat arguments: ${JSON.stringify(args)}`);
   const sep = "[----------SEPARATOR-" + uuidV4() + "----------]";
@@ -196,5 +214,9 @@ export async function inspectVCVarsAllEnvironmentVariables(
   );
   const envAfter = parseSetOutput(rawEnvAfter);
   log.debug(`Computing environment variable delta`);
-  return computeEnvDelta(envBefore, envAfter);
+  let delta: CaseInsensitiveStringMap = computeEnvDelta(envBefore, envAfter);
+  if (processStyle !== null) {
+    delta = processPaths(delta, processStyle);
+  }
+  return delta;
 }

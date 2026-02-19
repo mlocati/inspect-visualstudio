@@ -28870,7 +28870,9 @@ function setDebug(value) {
 }
 function debug(message) {
     if (enableDebug) {
-        String(message).split(/\r?\n/).forEach(line => info(`[DEBUG] ${line}`));
+        String(message)
+            .split(/\r?\n/)
+            .forEach((line) => info(`[DEBUG] ${line}`));
     }
     else if (isDebug()) {
         debug$1(message);
@@ -29289,21 +29291,115 @@ class CaseInsensitiveMap {
 class CaseInsensitiveStringMap extends CaseInsensitiveMap {
 }
 
-function pathListKeyNormalizer(value) {
+var ProcessStyle;
+(function (ProcessStyle) {
+    ProcessStyle["Windows"] = "windows";
+    ProcessStyle["Cygwin"] = "cygwin";
+    ProcessStyle["MSYS2"] = "msys2";
+})(ProcessStyle || (ProcessStyle = {}));
+var DriveLetterStyle;
+(function (DriveLetterStyle) {
+    DriveLetterStyle[DriveLetterStyle["UpperCase"] = 0] = "UpperCase";
+    DriveLetterStyle[DriveLetterStyle["LowerCase"] = 1] = "LowerCase";
+})(DriveLetterStyle || (DriveLetterStyle = {}));
+/**
+ * Takes a path and normalizes it.
+ * @returns an empty string if the path does not exist, otherwise the normalized and absolute path.
+ */
+function normalizeExistingWindowsPath(inputPath) {
+    if (!inputPath) {
+        return "";
+    }
+    try {
+        const absolute = path$1.resolve(inputPath);
+        return fs$1.realpathSync.native(absolute);
+    }
+    catch {
+        return "";
+    }
+}
+function normalizeExistingPathForPosix(prefix, inputPath, driveLetterCase) {
+    const normalized = normalizeExistingWindowsPath(inputPath);
+    if (!normalized) {
+        return "";
+    }
+    const driveLetterMatch = normalized.match(/^([a-zA-Z]):\\/);
+    if (!driveLetterMatch) {
+        return "";
+    }
+    let driveLetter = driveLetterMatch[1];
+    if (driveLetterCase === DriveLetterStyle.LowerCase) {
+        driveLetter = driveLetter.toLowerCase();
+    }
+    else if (driveLetterCase === DriveLetterStyle.UpperCase) {
+        driveLetter = driveLetter.toUpperCase();
+    }
+    const restOfPath = normalized
+        .substring(3)
+        .replace(/\\/g, "/")
+        .replace(/\/+/g, "/");
+    return `${prefix}${driveLetter}/${restOfPath}`;
+}
+function normalizeExistingPathForCygwin(inputPath) {
+    return normalizeExistingPathForPosix("/cygdrive/", inputPath, DriveLetterStyle.LowerCase);
+}
+function normalizeExistingPathForMSYS2(inputPath) {
+    return normalizeExistingPathForPosix("/", inputPath, DriveLetterStyle.LowerCase);
+}
+function processExistingPath(inputPath, style) {
+    switch (style) {
+        case ProcessStyle.Windows:
+            return normalizeExistingWindowsPath(inputPath);
+        case ProcessStyle.Cygwin:
+            return normalizeExistingPathForCygwin(inputPath);
+        case ProcessStyle.MSYS2:
+            return normalizeExistingPathForMSYS2(inputPath);
+        default:
+            return "";
+    }
+}
+
+function envNameNormalizer(value) {
     return value.toUpperCase();
 }
-function isPathListKey(key) {
-    return PATH_LISTS.includes(pathListKeyNormalizer(key));
+const SINGLE_PATH_ENV_VARS = [
+    'DevEnvDir',
+    'FrameworkDir',
+    'FrameworkDir64',
+    'FSHARPINSTALLDIR',
+    'IFCPATH',
+    'NETFXSDKDir',
+    'UniversalCRTSdkDir',
+    'VCIDEInstallDir',
+    'VCINSTALLDIR',
+    'VCPKG_ROOT',
+    'VCToolsInstallDir',
+    'VCToolsRedistDir',
+    'VS170COMNTOOLS',
+    'VSINSTALLDIR',
+    'VSSDK150INSTALL',
+    'VSSDKINSTALL',
+    'WindowsSdkBinPath',
+    'WindowsSdkDir',
+    'WindowsSdkVerBinPath',
+    'WindowsSDK_ExecutablePath_x64',
+    'WindowsSDK_ExecutablePath_x86',
+].map(s => envNameNormalizer(s));
+function isSinglePathEnvVar(name) {
+    return SINGLE_PATH_ENV_VARS.includes(envNameNormalizer(name));
 }
-const PATH_LISTS = [
-    '__VSCMD_PREINIT_PATH',
+const MULTI_PATH_ENV_VARS = [
     'EXTERNAL_INCLUDE',
     'INCLUDE',
     'LIB',
     'LIBPATH',
     'Path',
     'WindowsLibPath',
-].map(s => pathListKeyNormalizer(s));
+    '__VSCMD_PREINIT_PATH',
+].map(s => envNameNormalizer(s));
+function isMultiPathEnvVar(name) {
+    return MULTI_PATH_ENV_VARS.includes(envNameNormalizer(name));
+}
 const pathsAreSame = (function () {
     function getComparablePath(path) {
         path = path.trim().toLocaleLowerCase();
@@ -29346,7 +29442,7 @@ function computeEnvDelta(before, after) {
             debug(`- unchanged: ${key}=${afterValue}`);
             continue;
         }
-        if (!isPathListKey(key)) {
+        if (!isMultiPathEnvVar(key)) {
             debug(`- changed: ${key}=${afterValue} (was ${beforeValue})`);
             delta.set(key, afterValue);
             continue;
@@ -29370,6 +29466,50 @@ function computeEnvDelta(before, after) {
         }
     }
     return delta;
+}
+function processPaths(vars, processStyle) {
+    debug(`Processing environment variables with process style ${processStyle}`);
+    const result = new CaseInsensitiveStringMap();
+    for (const [key, value] of vars) {
+        if (isSinglePathEnvVar(key)) {
+            const path = processExistingPath(value, processStyle);
+            debug(`- single path "${key}": ${value} -> ${value === path ? '(unchanged)' : path}`);
+            if (path) {
+                result.set(key, path);
+            }
+            continue;
+        }
+        if (isMultiPathEnvVar(key)) {
+            debug(`- multi path "${key}"`);
+            const paths = value
+                .split(';')
+                .map(s => {
+                const processed = processExistingPath(s, processStyle);
+                debug(`  - ${s} -> ${s === processed ? '(unchanged)' : processed}`);
+                return processed;
+            })
+                .filter(s => s !== '');
+            if (paths.length === 0) {
+                debug('  - no valid paths found, skipping environment variable');
+                continue;
+            }
+            switch (processStyle) {
+                case ProcessStyle.Windows:
+                    result.set(key, paths.join(';'));
+                    break;
+                case ProcessStyle.Cygwin:
+                case ProcessStyle.MSYS2:
+                    result.set(key, paths.join(':'));
+                    break;
+                default:
+                    throw new Error(`Unsupported process style: ${processStyle}`);
+            }
+            continue;
+        }
+        debug(`- not path "${key}": ${value}`);
+        result.set(key, value);
+    }
+    return result;
 }
 
 const byteToHex = [];
@@ -29552,7 +29692,22 @@ function getArgumentsFromOptions(options) {
     }
     return args;
 }
+function parseProcessPathsOption(option) {
+    switch (option.trim().toLowerCase()) {
+        case "":
+            return null;
+        case "windows":
+            return ProcessStyle.Windows;
+        case "cygwin":
+            return ProcessStyle.Cygwin;
+        case "msys2":
+            return ProcessStyle.MSYS2;
+        default:
+            throw new Error(`Unsupported process paths option: ${option}`);
+    }
+}
 async function inspectVCVarsAllEnvironmentVariables(vcVarsAllPath, options) {
+    const processStyle = parseProcessPathsOption(options?.processPaths || "");
     const args = getArgumentsFromOptions(options);
     debug(`vcvarsall.bat arguments: ${JSON.stringify(args)}`);
     const sep = "[----------SEPARATOR-" + v4() + "----------]";
@@ -29582,7 +29737,11 @@ async function inspectVCVarsAllEnvironmentVariables(vcVarsAllPath, options) {
     debug(`Parsing environment variables set after running vcvarsall.bat\n    ${rawEnvAfter.replace(/\n/g, "\n    ")}`);
     const envAfter = parseSetOutput(rawEnvAfter);
     debug(`Computing environment variable delta`);
-    return computeEnvDelta(envBefore, envAfter);
+    let delta = computeEnvDelta(envBefore, envAfter);
+    if (processStyle !== null) {
+        delta = processPaths(delta, processStyle);
+    }
+    return delta;
 }
 
 async function run() {
@@ -29599,6 +29758,7 @@ async function run() {
             platformType: getInput("platform-type"),
             windowsSDKVersion: getInput("windows-sdk-version"),
             spectreMode: getBooleanInput("spectre-mode"),
+            processPaths: getInput("process-paths"),
         });
         setOutput('vcvarsall-path', vcVarsallPath);
         setOutput('path', vars.get('Path') ?? '');

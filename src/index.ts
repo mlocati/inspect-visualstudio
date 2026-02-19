@@ -20,6 +20,7 @@ async function run(): Promise<void>
       platformType: core.getInput("platform-type"),
       windowsSDKVersion: core.getInput("windows-sdk-version"),
       spectreMode: core.getBooleanInput("spectre-mode"),
+      processPaths: core.getInput("process-paths"),
     });
     core.setOutput('vcvarsall-path', vcVarsallPath);
     core.setOutput('path', vars.get('Path') ?? '');

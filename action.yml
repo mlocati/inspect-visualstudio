@@ -28,6 +28,10 @@ inputs:
     description: Whether to enable Spectre mitigation (true or false)
     required: false
     default: "false"
+  process-paths:
+    description: "'windows', 'cygwin', or 'msys2': existing directories in environment variables (PATH, INCLUDE, ...) will be normalized to absolute existing Windows paths: if 'cygwin' or 'msys2' is used, the paths will be convert to cygwin (/cygdrive/c/...) or msys2 (/c/...) format"
+    required: false
+    default: ""
   if-not-windows:
     description: What to do if the action is run on a non-Windows system
     required: false

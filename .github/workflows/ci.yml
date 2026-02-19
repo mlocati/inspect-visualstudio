@@ -158,7 +158,7 @@ jobs:
         id: execute-msys2
         uses: ./
         with:
-          debug: true
+          debug: false
           process-paths: msys2
       -
         name: Dump outputs (except "all")

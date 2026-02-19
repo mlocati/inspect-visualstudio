@@ -10,10 +10,10 @@ interface Options {
   architecture?: Architecture | string;
   platformType?: "" | "store" | "uwp" | string;
   windowsSDKVersion?:
-    | ""
-    | `${number}.${number}`
-    | `${number}.${number}.${number}.${number}`
-    | string;
+  | ""
+  | `${number}.${number}`
+  | `${number}.${number}.${number}.${number}`
+  | string;
   spectreMode?: boolean;
   processPaths?: "" | "windows" | "cygwin" | "msys2" | string;
 }
@@ -167,37 +167,43 @@ export async function inspectVCVarsAllEnvironmentVariables(
   options?: Options,
 ): Promise<CaseInsensitiveStringMap> {
   const processStyle = parseProcessPathsOption(options?.processPaths || "");
-  const args = getArgumentsFromOptions(options);
-  log.debug(`vcvarsall.bat arguments: ${JSON.stringify(args)}`);
   const sep = "[----------SEPARATOR-" + uuidV4() + "----------]";
-  const result = await runner.run(
-    'cmd.exe',
-    ['/c', `set && echo ${sep} && "${vcVarsAllPath}" ${args.join(" ")} && echo ${sep} && set`],
-    {
-      env: {
-        ComSpec:
-          process.env.ComSpec ||
-          path.join(
+  log.startDebugGroup("Running vcvarsall.bat");
+  let result: runner.Result;
+  try {
+    const args = getArgumentsFromOptions(options);
+    log.debug(`vcvarsall.bat arguments: ${JSON.stringify(args)}`);
+    result = await runner.run(
+      'cmd.exe',
+      ['/c', `set && echo ${sep} && "${vcVarsAllPath}" ${args.join(" ")} && echo ${sep} && set`],
+      {
+        env: {
+          ComSpec:
+            process.env.ComSpec ||
+            path.join(
+              process.env.SystemRoot || process.env.windir || "C:\\Windows",
+              "System32",
+              "cmd.exe",
+            ),
+          Path: [
+            path.join(
+              process.env.SystemRoot || process.env.windir || "C:\\Windows",
+              "System32",
+            ),
             process.env.SystemRoot || process.env.windir || "C:\\Windows",
-            "System32",
-            "cmd.exe",
-          ),
-        Path: [
-          path.join(
-            process.env.SystemRoot || process.env.windir || "C:\\Windows",
-            "System32",
-          ),
-          process.env.SystemRoot || process.env.windir || "C:\\Windows",
-        ].join(";"),
-        SystemRoot: process.env.SystemRoot || process.env.windir || "C:\\Windows",
-        windir: process.env.SystemRoot || process.env.windir || "C:\\Windows",
+          ].join(";"),
+          SystemRoot: process.env.SystemRoot || process.env.windir || "C:\\Windows",
+          windir: process.env.SystemRoot || process.env.windir || "C:\\Windows",
+        },
       },
-    },
-  );
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `Failed to get environment variables: ${result.stderr || result.stdout || `Exited with code ${result.exitCode}`}`,
     );
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Failed to get environment variables: ${result.stderr || result.stdout || `Exited with code ${result.exitCode}`}`,
+      );
+    }
+  } finally {
+    log.endDebugGroup();
   }
   const [rawEnvBefore, _, rawEnvAfter] = result.stdout
     .split(sep)
@@ -205,15 +211,14 @@ export async function inspectVCVarsAllEnvironmentVariables(
   if (!rawEnvBefore || !rawEnvAfter) {
     throw new Error(`Failed to parse environment variables: ${result.stdout}`);
   }
-  log.debug(
-    `Parsing environment variables set before running vcvarsall.bat\n    ${rawEnvBefore.replace(/\n/g, "\n    ")}`,
-  );
+  log.startDebugGroup("Environment variables before vcvarsall.bat");
+  log.debug(rawEnvBefore);
+  log.endDebugGroup();
   const envBefore = parseSetOutput(rawEnvBefore);
-  log.debug(
-    `Parsing environment variables set after running vcvarsall.bat\n    ${rawEnvAfter.replace(/\n/g, "\n    ")}`,
-  );
+  log.startDebugGroup("Environment variables after vcvarsall.bat");
+  log.debug(rawEnvAfter);
+  log.endDebugGroup();
   const envAfter = parseSetOutput(rawEnvAfter);
-  log.debug(`Computing environment variable delta`);
   let delta: CaseInsensitiveStringMap = computeEnvDelta(envBefore, envAfter);
   if (processStyle !== null) {
     delta = processPaths(delta, processStyle);

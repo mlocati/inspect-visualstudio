@@ -29521,25 +29521,41 @@ function computeEnvDelta(before, after) {
         endDebugGroup();
     }
 }
-function processPaths(vars, processStyle) {
-    startDebugGroup(`Processing environment variables (${processStyle})`);
+function getProcessStyleForVar(varName, defaultProcessStyle, byVarProcessStyle) {
+    if (byVarProcessStyle) {
+        for (const [style, varNames] of byVarProcessStyle.entries()) {
+            if (varNames.some(vn => envNameNormalizer(vn) === envNameNormalizer(varName))) {
+                return [style, true];
+            }
+        }
+    }
+    return [defaultProcessStyle ?? null, false];
+}
+function processPaths(vars, defaultProcessStyle, byVarProcessStyle) {
+    startDebugGroup(`Processing environment variables`);
     try {
         const result = new CaseInsensitiveStringMap();
         for (const [key, value] of vars) {
+            const [processStyleForVar, styleForSpecificVar] = getProcessStyleForVar(key, defaultProcessStyle, byVarProcessStyle);
+            if (processStyleForVar === null) {
+                debug(`no process style for "${key}"`);
+                result.set(key, value);
+                continue;
+            }
             if (isSinglePathEnvVar(key)) {
-                const path = processExistingPath(value, processStyle);
-                debug(`single path "${key}": ${value} -> ${value === path ? '(unchanged)' : path}`);
+                const path = processExistingPath(value, processStyleForVar);
+                debug(`single path "${key}" as ${processStyleForVar}: ${value} -> ${value === path ? '(unchanged)' : path}`);
                 if (path) {
                     result.set(key, path);
                 }
                 continue;
             }
             if (isMultiPathEnvVar(key)) {
-                debug(`multi path "${key}"`);
+                debug(`multi path "${key}" as ${processStyleForVar}:`);
                 const paths = value
                     .split(';')
                     .map(s => {
-                    const processed = processExistingPath(s, processStyle);
+                    const processed = processExistingPath(s, processStyleForVar);
                     debug(`- ${s} -> ${s === processed ? '(unchanged)' : processed}`);
                     return processed;
                 })
@@ -29548,7 +29564,7 @@ function processPaths(vars, processStyle) {
                     debug('- no valid paths found, skipping environment variable');
                     continue;
                 }
-                switch (processStyle) {
+                switch (processStyleForVar) {
                     case ProcessStyle.Windows:
                         result.set(key, paths.join(';'));
                         break;
@@ -29557,11 +29573,14 @@ function processPaths(vars, processStyle) {
                         result.set(key, paths.join(':'));
                         break;
                     default:
-                        throw new Error(`Unsupported process style: ${processStyle}`);
+                        throw new Error(`Unsupported process style: ${processStyleForVar}`);
                 }
                 continue;
             }
-            debug(`not path "${key}": ${value}`);
+            if (styleForSpecificVar) {
+                throw new Error(`Can't apply ${JSON.stringify(processStyleForVar)} process style to environment variable "${key}" because it is not recognized as single-path or multi-path variable`);
+            }
+            debug(`"${key}" doesn't contain paths, so we won't apply the default ${processStyleForVar} process style`);
             result.set(key, value);
         }
         return result;
@@ -29765,8 +29784,36 @@ function parseProcessPathsOption(option) {
             throw new Error(`Unsupported process paths option: ${option}`);
     }
 }
+function parseByVarProcessStyle(options) {
+    const map = new Map();
+    let vars;
+    vars = parseEnvVarList(options?.windowsPaths || "");
+    if (vars.length > 0) {
+        map.set(ProcessStyle.Windows, vars);
+    }
+    vars = parseEnvVarList(options?.cygwinPaths || "");
+    if (vars.length > 0) {
+        map.set(ProcessStyle.Cygwin, vars);
+    }
+    vars = parseEnvVarList(options?.msys2Paths || "");
+    if (vars.length > 0) {
+        map.set(ProcessStyle.MSYS2, vars);
+    }
+    return map;
+}
+function parseEnvVarList(option) {
+    let vars;
+    if (typeof option === "string") {
+        vars = option.split(/[\r\n]+/);
+    }
+    else {
+        vars = option;
+    }
+    return vars.map((s) => s.trim()).filter((s) => s !== "");
+}
 async function inspectVCVarsAllEnvironmentVariables(vcVarsAllPath, options) {
     const processStyle = parseProcessPathsOption(options?.processPaths || "");
+    const byVarProcessStyle = parseByVarProcessStyle(options);
     const sep = "[----------SEPARATOR-" + v4() + "----------]";
     startDebugGroup("Running vcvarsall.bat");
     let result;
@@ -29807,8 +29854,8 @@ async function inspectVCVarsAllEnvironmentVariables(vcVarsAllPath, options) {
     endDebugGroup();
     const envAfter = parseSetOutput(rawEnvAfter);
     let delta = computeEnvDelta(envBefore, envAfter);
-    if (processStyle !== null) {
-        delta = processPaths(delta, processStyle);
+    if (processStyle !== null || byVarProcessStyle.size > 0) {
+        delta = processPaths(delta, processStyle, byVarProcessStyle);
     }
     return delta;
 }
@@ -29828,6 +29875,9 @@ async function run() {
             windowsSDKVersion: getInput("windows-sdk-version"),
             spectreMode: getBooleanInput("spectre-mode"),
             processPaths: getInput("process-paths"),
+            windowsPaths: getInput("windows-paths"),
+            cygwinPaths: getInput("cygwin-paths"),
+            msys2Paths: getInput("msys2-paths"),
         });
         setOutput('vcvarsall-path', vcVarsallPath);
         setOutput('path', vars.get('Path') ?? '');

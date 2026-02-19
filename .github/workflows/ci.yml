@@ -1,0 +1,113 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ci.yml"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+  push:
+    branches:
+      - dev
+      - v1
+    tags-ignore:
+      - "**"
+    paths:
+      - ".github/workflows/ci.yml"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+
+jobs:
+
+  test-non-windows:
+    name: Test on non-Windows OS
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v6
+      -
+        name: Test (should silently skip)
+        uses: ./
+        with:
+          if-not-windows: ignore
+          debug: true
+      -
+        name: Test (should warn and continue)
+        uses: ./
+        with:
+          if-not-windows: warn
+          debug: true
+      -
+        name: Test (should fail)
+        id: fail-01
+        continue-on-error: true
+        uses: ./
+        with:
+          if-not-windows: fail
+          debug: true
+      -
+        name: Stop if execution was successful
+        if: steps.fail-01.outcome == 'success'
+        run: exit 1
+
+  ci:
+    name: CI
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: pwsh
+    permissions:
+      contents: write
+    steps:
+      -
+        name: Configure git
+        run: git config --global core.autocrlf input
+      -
+        name: Setup NodeJS
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+      -
+        name: Checkout
+        uses: actions/checkout@v6
+      -
+        name: Install NPM packages
+        run: npm ci
+      -
+        name: Delete dist folder
+        run: Remove-Item -Path ./dist -Recurse -Force -ErrorAction Ignore
+      -
+        name: Build dist folder
+        run: npm run-script build
+      -
+        name: Check changes
+        run: |
+          git diff --quiet
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "❌ Changes detected in dist folder. Please commit the changes to the dist folder before pushing."
+            git diff --name-only
+            exit 1
+          }
+      -
+        name: Run action
+        id: execute
+        uses: ./
+        with:
+          debug: true
+      -
+        name: Dump action outputs (except "all")
+        env:
+          OUTPUTS: ${{ toJson(steps.execute.outputs) }}
+        run: |
+          Write-Host "Action outputs:"
+          "$env:OUTPUTS" | ConvertFrom-Json | Where-Object { $_.Key -ne "all" } | Format-List
+      -
+        name: Dump action outputs (values of "all")
+        env:
+          ALL_OUTPUT: ${{ toJson(steps.execute.outputs.all) }}
+        run: |
+          Write-Host "Action outputs:"
+          "$env:ALL_OUTPUT" | ConvertFrom-Json | ConvertFrom-Json | Format-List

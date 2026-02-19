@@ -1,0 +1,76 @@
+name: Inspect Visual Studio
+author: Michele Locati
+description: Detects the Visual Studio installation on the runner and gathers the env vars that vcvarsall.bat would set.
+
+runs:
+  using: node20
+  main: dist/index.js
+
+branding:
+  icon: target
+  color: blue
+
+inputs:
+  version:
+    description: The Visual Studio version to inspect (e.g. 'latest', '2022', '17')
+    required: false
+    default: latest
+  architecture:
+    description: The architecture for the Visual Studio tools ('x86', 'amd64', 'x86_amd64', 'x86_arm', 'x86_arm64', 'amd64_x86', 'amd64_arm', 'amd64_arm64') - if not specified, the action will try to determine it based on the system architecture
+    required: false
+  platform-type:
+    description: The platform type for the Visual Studio tools ('store', 'uwp', or empty for classic desktop)
+    required: false
+  windows-sdk-version:
+    description: The Windows SDK version to use (e.g. '10.0.26100.0') - if not specified, the action will try to determine it based on the installed SDKs
+    required: false
+  spectre-mode:
+    description: Whether to enable Spectre mitigation (true or false)
+    required: false
+    default: "false"
+  if-not-windows:
+    description: What to do if the action is run on a non-Windows system
+    required: false
+    default: fail
+  debug:
+    description: Dump debug information
+    required: false
+    default: "false"
+
+outputs:
+  vcvarsall-path:
+    description: The path to the vcvarsall.bat file used for inspection - e.g. C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat
+  path:
+    description: The additional paths added to the PATH environment variable by vcvarsall.bat (semicolon-separated)
+  include:
+    description: The INCLUDE environment variable set by vcvarsall.bat (semicolon-separated)
+  lib:
+    description: The LIB environment variable set by vcvarsall.bat (semicolon-separated)
+  libpath:
+    description: The LIBPATH environment variable set by vcvarsall.bat (semicolon-separated)
+  vc-installdir:
+    description: The root directory of Visual C++ - e.g. C:\Program Files\Microsoft Visual Studio\2022\Community\VC\
+  vs-installdir:
+    description: The root directory of Visual Studio - e.g. C:\Program Files\Microsoft Visual Studio\2022\Community\
+  vs-version:
+    description: The version of Visual Studio - e.g. 17.0
+  vctools-installdir:
+    description: The root directory of the Visual C++ tools - e.g. C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\
+  vctools-version:
+    description: The version of the Visual C++ tools - e.g. 14.44.35207
+  windows-sdk-dir:
+    description: The root directory of the Windows SDK - e.g. C:\Program Files (x86)\Windows Kits\10\
+  windows-sdk-version:
+    description: The version of the Windows SDK - e.g. 10.0.26100.0\
+  windows-sdk-lib-version:
+    description: The version of the Windows SDK libraries - e.g. 10.0.26100.0\
+  ucrt-version:
+    description: The version of the Universal C Runtime - e.g. 10.0.26100.0
+  vcmd-arg-tgt-arch:
+    description: The architecture of the target platform - e.g. x64
+  vcmd-arg-host-arch:
+    description: The architecture of the system that runs the Visual Studio tools - e.g. x64
+  all:
+    description: All the environment variables set by vcvarsall.bat, in JSON format
+  platform:
+    description: The target platform for the Visual Studio tools - e.g. x64

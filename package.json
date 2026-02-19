@@ -1,0 +1,42 @@
+{
+  "name": "@mlocati/inspect-visualstudio",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "A GitHub Action that inspects Visual Studio installations",
+  "keywords": [
+    "windows",
+    "visualstudio",
+    "detect",
+    "inspect",
+    "github",
+    "action"
+  ],
+  "homepage": "https://github.com/mlocati/inspect-visualstudio",
+  "bugs": {
+    "url": "https://github.com/mlocati/inspect-visualstudio/issues"
+  },
+  "license": "MIT",
+  "author": "Michele Locati <michele@locati.it>",
+  "engines": {
+    "node": "^20.20"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "prebuild": "shx rm -rf dist",
+    "build": "npx rollup --config rollup.config.ts --configPlugin @rollup/plugin-typescript"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.3.0",
+    "@types/node": "^20.19.33",
+    "rollup": "^4.57.1",
+    "shx": "^0.4.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.3",
+    "uuid": "^13.0.0"
+  }
+}

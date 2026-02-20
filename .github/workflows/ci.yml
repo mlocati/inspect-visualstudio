@@ -54,13 +54,17 @@ jobs:
         run: exit 1
 
   ci:
-    name: CI
-    runs-on: windows-2025
+    name: CI on Windows ${{ matrix.windows-version }}
+    strategy:
+      matrix:
+        windows-version:
+          - 2022
+          - 2025
+          - 2025-vs2026
+    runs-on: windows-${{ matrix.windows-version }}
     defaults:
       run:
         shell: pwsh
-    permissions:
-      contents: write
     steps:
       -
         name: Configure git

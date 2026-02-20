@@ -1,4 +1,5 @@
-[![Continuous Integration](https://github.com/mlocati/inspect-visualstudio/actions/workflows/ci.yml/badge.svg)](https://github.com/mlocati/inspect-visualstudio/actions/workflows/ci.yml)
+[![Continuous Integration for dev](https://img.shields.io/github/actions/workflow/status/mlocati/inspect-visualstudio/ci.yml?label=dev)](https://github.com/mlocati/inspect-visualstudio/actions/workflows/ci.yml)
+[![Continuous Integration for v1](https://img.shields.io/github/actions/workflow/status/mlocati/inspect-visualstudio/ci.yml?label=v1&branch=v1)](https://github.com/mlocati/inspect-visualstudio/actions/workflows/ci.yml)
 
 ## Inspect Visual Studio
 

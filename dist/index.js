@@ -29410,44 +29410,47 @@ function processExistingPath(inputPath, style) {
 function envNameNormalizer(value) {
     return value.toUpperCase();
 }
-const SINGLE_PATH_ENV_VARS = [
-    'DevEnvDir',
-    'FrameworkDir',
-    'FrameworkDir64',
-    'FSHARPINSTALLDIR',
-    'IFCPATH',
-    'NETFXSDKDir',
-    'UniversalCRTSdkDir',
-    'VCIDEInstallDir',
-    'VCINSTALLDIR',
-    'VCPKG_ROOT',
-    'VCToolsInstallDir',
-    'VCToolsRedistDir',
-    'VS170COMNTOOLS',
-    'VSINSTALLDIR',
-    'VSSDK150INSTALL',
-    'VSSDKINSTALL',
-    'WindowsSdkBinPath',
-    'WindowsSdkDir',
-    'WindowsSdkVerBinPath',
-    'WindowsSDK_ExecutablePath_x64',
-    'WindowsSDK_ExecutablePath_x86',
-].map(s => envNameNormalizer(s));
-function isSinglePathEnvVar(name) {
-    return SINGLE_PATH_ENV_VARS.includes(envNameNormalizer(name));
+class PathChecker {
+    cases;
+    constructor(cases) {
+        this.cases = cases.map((item) => item instanceof RegExp ? item : envNameNormalizer(item));
+    }
+    test(name) {
+        return (this.cases.includes(envNameNormalizer(name)) ||
+            this.cases.some((s) => s instanceof RegExp && s.test(name)));
+    }
 }
-const MULTI_PATH_ENV_VARS = [
-    'EXTERNAL_INCLUDE',
-    'INCLUDE',
-    'LIB',
-    'LIBPATH',
-    'Path',
-    'WindowsLibPath',
-    '__VSCMD_PREINIT_PATH',
-].map(s => envNameNormalizer(s));
-function isMultiPathEnvVar(name) {
-    return MULTI_PATH_ENV_VARS.includes(envNameNormalizer(name));
-}
+const singlePathChecker = new PathChecker([
+    "DevEnvDir",
+    /^FrameworkDir(32|64)?$/i,
+    "FSHARPINSTALLDIR",
+    "IFCPATH",
+    /^llvm(Arm64|X64|X86)$/i,
+    "NETFXSDKDir",
+    "UniversalCRTSdkDir",
+    "VCIDEInstallDir",
+    "VCINSTALLDIR",
+    "VCPKG_ROOT",
+    "VCToolsInstallDir",
+    "VCToolsRedistDir",
+    /^VS\d*COMNTOOLS$/i,
+    "VSINSTALLDIR",
+    /^VSSDK\d*INSTALL$/i,
+    "VSSDKINSTALL",
+    "WindowsSdkBinPath",
+    "WindowsSdkDir",
+    "WindowsSdkVerBinPath",
+    /^WindowsSDK_ExecutablePath(_x86|_x64)?$/i,
+]);
+const multiPathChecker = new PathChecker([
+    "EXTERNAL_INCLUDE",
+    "INCLUDE",
+    "LIB",
+    "LIBPATH",
+    "Path",
+    "WindowsLibPath",
+    "__VSCMD_PREINIT_PATH",
+]);
 const pathsAreSame = (function () {
     function getComparablePath(path) {
         path = path.trim().toLocaleLowerCase();
@@ -29492,7 +29495,7 @@ function computeEnvDelta(before, after) {
                 debug(`unchanged: ${key}=${afterValue}`);
                 continue;
             }
-            if (!isMultiPathEnvVar(key)) {
+            if (!multiPathChecker.test(key)) {
                 debug(`changed: ${key}=${afterValue} (was ${beforeValue})`);
                 delta.set(key, afterValue);
                 continue;
@@ -29542,7 +29545,7 @@ function processPaths(vars, defaultProcessStyle, byVarProcessStyle) {
                 result.set(key, value);
                 continue;
             }
-            if (isSinglePathEnvVar(key)) {
+            if (singlePathChecker.test(key)) {
                 const path = processExistingPath(value, processStyleForVar);
                 debug(`single path "${key}" as ${processStyleForVar}: ${value} -> ${value === path ? '(unchanged)' : path}`);
                 if (path) {
@@ -29550,7 +29553,7 @@ function processPaths(vars, defaultProcessStyle, byVarProcessStyle) {
                 }
                 continue;
             }
-            if (isMultiPathEnvVar(key)) {
+            if (multiPathChecker.test(key)) {
                 debug(`multi path "${key}" as ${processStyleForVar}:`);
                 const paths = value
                     .split(';')

@@ -29425,6 +29425,7 @@ const singlePathChecker = new PathChecker([
     /^FrameworkDir(32|64)?$/i,
     "FSHARPINSTALLDIR",
     "IFCPATH",
+    /^llvm(Arm64|X64|X86)$/i,
     "NETFXSDKDir",
     "UniversalCRTSdkDir",
     "VCIDEInstallDir",

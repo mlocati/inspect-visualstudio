@@ -20,48 +20,9 @@ on:
       - "package-lock.json"
 
 jobs:
-
-  test-non-windows:
-    name: Test on non-Windows OS
-    runs-on: ubuntu-latest
-    steps:
-      -
-        name: Checkout
-        uses: actions/checkout@v6
-      -
-        name: Test (should silently skip)
-        uses: ./
-        with:
-          if-not-windows: ignore
-          debug: true
-      -
-        name: Test (should warn and continue)
-        uses: ./
-        with:
-          if-not-windows: warn
-          debug: true
-      -
-        name: Test (should fail)
-        id: fail-01
-        continue-on-error: true
-        uses: ./
-        with:
-          if-not-windows: fail
-          debug: true
-      -
-        name: Stop if execution was successful
-        if: steps.fail-01.outcome == 'success'
-        run: exit 1
-
-  ci:
-    name: CI on Windows ${{ matrix.windows-version }}
-    strategy:
-      matrix:
-        windows-version:
-          - 2022
-          - 2025
-          - 2025-vs2026
-    runs-on: windows-${{ matrix.windows-version }}
+  check-dist:
+    name: Check dist
+    runs-on: windows-2025
     defaults:
       run:
         shell: pwsh
@@ -95,6 +56,60 @@ jobs:
             git diff --name-only
             exit 1
           }
+
+  test-non-windows:
+    name: Test on non-Windows OS
+    needs: check-dist
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v6
+      -
+        name: Test (should silently skip)
+        uses: ./
+        with:
+          if-not-windows: ignore
+          debug: true
+      -
+        name: Test (should warn and continue)
+        uses: ./
+        with:
+          if-not-windows: warn
+          debug: true
+      -
+        name: Test (should fail)
+        id: fail-01
+        continue-on-error: true
+        uses: ./
+        with:
+          if-not-windows: fail
+          debug: true
+      -
+        name: Stop if execution was successful
+        if: steps.fail-01.outcome == 'success'
+        run: exit 1
+
+  ci:
+    name: CI on Windows ${{ matrix.windows-version }}
+    needs: check-dist
+    strategy:
+      matrix:
+        windows-version:
+          - 2022
+          - 2025
+          - 2025-vs2026
+    runs-on: windows-${{ matrix.windows-version }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      -
+        name: Configure git
+        run: git config --global core.autocrlf input
+      -
+        name: Checkout
+        uses: actions/checkout@v6
       -
         name: Run action
         id: execute

@@ -103,7 +103,7 @@ jobs:
           OUTPUTS: ${{ toJson(steps.execute.outputs) }}
         run: |
           Write-Host "Action outputs:"
-          "$env:OUTPUTS" | ConvertFrom-Json | Where-Object { $_.Key -ne "all" } | Format-List
+          "$env:OUTPUTS" | ConvertFrom-Json | Select-Object -Property * -ExcludeProperty all | Format-List
       -
         name: Dump outputs (values of "all")
         env:
@@ -124,7 +124,7 @@ jobs:
           OUTPUTS: ${{ toJson(steps.execute-windows.outputs) }}
         run: |
           Write-Host "Action outputs:"
-          "$env:OUTPUTS" | ConvertFrom-Json | Where-Object { $_.Key -ne "all" } | Format-List
+          "$env:OUTPUTS" | ConvertFrom-Json | Select-Object -Property * -ExcludeProperty all | Format-List
       -
         name: Dump outputs (values of "all")
         env:
@@ -145,7 +145,7 @@ jobs:
           OUTPUTS: ${{ toJson(steps.execute-cygwin.outputs) }}
         run: |
           Write-Host "Action outputs:"
-          "$env:OUTPUTS" | ConvertFrom-Json | Where-Object { $_.Key -ne "all" } | Format-List
+          "$env:OUTPUTS" | ConvertFrom-Json | Select-Object -Property * -ExcludeProperty all | Format-List
       -
         name: Dump outputs (values of "all")
         env:
@@ -166,7 +166,7 @@ jobs:
           OUTPUTS: ${{ toJson(steps.execute-msys2.outputs) }}
         run: |
           Write-Host "Action outputs:"
-          "$env:OUTPUTS" | ConvertFrom-Json | Where-Object { $_.Key -ne "all" } | Format-List
+          "$env:OUTPUTS" | ConvertFrom-Json | Select-Object -Property * -ExcludeProperty all | Format-List
       -
         name: Dump outputs (values of "all")
         env:
@@ -194,7 +194,7 @@ jobs:
           OUTPUTS: ${{ toJson(steps.execute-mixed-1.outputs) }}
         run: |
           Write-Host "Action outputs:"
-          "$env:OUTPUTS" | ConvertFrom-Json | Where-Object { $_.Key -ne "all" } | Format-List
+          "$env:OUTPUTS" | ConvertFrom-Json | Select-Object -Property * -ExcludeProperty all | Format-List
       -
         name: Dump outputs (values of "all")
         env:
@@ -220,7 +220,7 @@ jobs:
           OUTPUTS: ${{ toJson(steps.execute-mixed-2.outputs) }}
         run: |
           Write-Host "Action outputs:"
-          "$env:OUTPUTS" | ConvertFrom-Json | Where-Object { $_.Key -ne "all" } | Format-List
+          "$env:OUTPUTS" | ConvertFrom-Json | Select-Object -Property * -ExcludeProperty all | Format-List
       -
         name: Dump outputs (values of "all")
         env:
